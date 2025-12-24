@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as d3 from 'd3';
 import { TreeNodeData } from '../types';
-import { ZoomIn, ZoomOut, Maximize, MousePointer2 } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize, Move } from 'lucide-react';
 
 interface MindMapProps {
   data: TreeNodeData;
@@ -13,18 +13,21 @@ const MindMap: React.FC<MindMapProps> = ({ data, onNodeClick }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   
-  // Refs to store D3 objects for programmatic access
+  // Refs for D3 objects
   const svgSelectionRef = useRef<d3.Selection<SVGSVGElement, unknown, null, undefined> | null>(null);
   const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const contentGroupRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null);
 
-  // Styling constants
-  const nodeWidth = 240;
-  const nodeHeight = 60;
-  const horizontalGap = 100;
-  const verticalGap = 20;
+  // Configuration
+  const config = {
+    nodeWidth: 260,
+    nodeHeight: 80, // Approximate height for spacing
+    horizontalGap: 80,
+    verticalGap: 30,
+    duration: 500
+  };
 
-  // Handle window resize
+  // Handle Resize
   useEffect(() => {
     const updateDimensions = () => {
       if (containerRef.current) {
@@ -34,31 +37,31 @@ const MindMap: React.FC<MindMapProps> = ({ data, onNodeClick }) => {
         });
       }
     };
-
+    
     window.addEventListener('resize', updateDimensions);
+    // Call immediately to set initial size
     updateDimensions();
 
     return () => window.removeEventListener('resize', updateDimensions);
   }, []);
 
-  // Main D3 Rendering Logic
+  // Main Render Logic
   useEffect(() => {
-    if (!svgRef.current || !containerRef.current || !data || dimensions.width === 0) return;
+    if (!svgRef.current || !data || dimensions.width === 0) return;
 
     const { width, height } = dimensions;
-    
-    // Clear previous
+
+    // 1. Setup SVG
     const svg = d3.select(svgRef.current);
-    svg.selectAll("*").remove();
+    svg.selectAll("*").remove(); // Clear all
     svgSelectionRef.current = svg;
 
-    // Create container group for zoom
+    // 2. Setup Zoom Group
     const g = svg.append("g");
     contentGroupRef.current = g;
 
-    // Define Zoom Behavior
     const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.05, 3]) // Increased range for better "infinite" feel
+      .scaleExtent([0.1, 4])
       .on("zoom", (event) => {
         g.attr("transform", event.transform);
       });
@@ -66,176 +69,165 @@ const MindMap: React.FC<MindMapProps> = ({ data, onNodeClick }) => {
     zoomBehaviorRef.current = zoom;
     svg.call(zoom);
 
-    // --- Layout Calculation ---
+    // 3. Compute Hierarchy
     const root = d3.hierarchy(data);
     
     const treeLayout = d3.tree<TreeNodeData>()
-      .nodeSize([nodeHeight + verticalGap, nodeWidth + horizontalGap])
-      .separation((a, b) => {
-        return a.parent === b.parent ? 1.2 : 1.4;
-      });
+      .nodeSize([config.nodeHeight + config.verticalGap, config.nodeWidth + config.horizontalGap])
+      .separation((a, b) => (a.parent === b.parent ? 1.1 : 1.3));
 
     treeLayout(root);
 
-    // --- Drawing ---
-
-    // Links
+    // 4. Draw Links (Smooth Bezier)
     g.selectAll(".link")
       .data(root.links())
       .enter()
       .append("path")
       .attr("class", "link")
       .attr("fill", "none")
-      .attr("stroke", "#bfdbfe")
+      .attr("stroke", "#cbd5e1") // Slate-300
       .attr("stroke-width", 2)
       .attr("d", d3.linkHorizontal<d3.HierarchyLink<TreeNodeData>, d3.HierarchyPointNode<TreeNodeData>>()
         .x(d => d.y)
         .y(d => d.x)
       );
 
-    // Nodes
+    // 5. Draw Nodes
     const nodes = g.selectAll(".node")
       .data(root.descendants())
       .enter()
       .append("g")
-      .attr("class", "node cursor-pointer transition-opacity hover:opacity-90")
+      .attr("class", "node group cursor-pointer")
       .attr("transform", d => `translate(${d.y},${d.x})`)
       .on("click", (event, d) => {
         event.stopPropagation();
         onNodeClick(d.data);
       });
 
-    // Node Content (HTML via foreignObject)
+    // 6. Node Cards (ForeignObject)
     nodes.append("foreignObject")
-      .attr("width", nodeWidth)
-      .attr("height", 200) // Ample height for overflow
-      .attr("y", -30)
+      .attr("width", config.nodeWidth)
+      .attr("height", 300) // Allow height to expand
+      .attr("y", -40) // Vertically center relative to the link connection
+      .attr("x", 0) // Padding from the link connection point
       .append("xhtml:div")
-      .style("width", `${nodeWidth}px`)
+      .style("width", `${config.nodeWidth}px`)
       .html(d => {
-        let bgClass = "bg-white border-gray-200";
-        let textClass = "text-gray-700";
-
+        // --- Styling Logic ---
+        let classes = "relative flex flex-col p-4 rounded-xl border transition-all duration-300 shadow-sm hover:shadow-lg hover:-translate-y-0.5 select-none";
+        let header = "";
+        
         if (d.data.type === 'root') {
-          bgClass = "bg-indigo-200 border-indigo-400 shadow-md";
-          textClass = "text-indigo-900 font-bold text-center text-base";
+          // Root Style
+          classes += " bg-slate-900 border-slate-800 text-white shadow-xl";
+          header = `<div class="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Central</div>`;
         } else if (d.data.type === 'category') {
-          bgClass = "bg-indigo-50 border-indigo-200 shadow-sm";
-          textClass = "text-indigo-800 font-semibold";
+          // Category Style
+          classes += " bg-white border-slate-200 border-l-4 border-l-indigo-500 shadow-md";
         } else {
-          bgClass = "bg-emerald-50 border-emerald-200";
-          textClass = "text-emerald-900 font-medium text-sm";
+          // Item Style
+          classes += " bg-white border-slate-200 hover:border-indigo-300";
         }
 
+        const nameClass = d.data.type === 'root' 
+          ? "font-bold text-lg leading-tight" 
+          : d.data.type === 'category' 
+            ? "font-semibold text-slate-800 text-base" 
+            : "font-medium text-slate-600 text-sm";
+
         return `
-          <div class="flex items-center justify-center p-3 min-h-[60px] rounded-xl border-2 ${bgClass} transition-all duration-200 select-none box-border">
-            <span class="leading-tight text-center ${textClass} break-words w-full block">
+          <div class="${classes}">
+            ${header}
+            <span class="${nameClass} break-words">
               ${d.data.name}
             </span>
+            ${d.data.children ? `<div class="absolute -right-3 top-1/2 -mt-1.5 w-3 h-3 bg-slate-300 rounded-full border-2 border-white"></div>` : ''}
           </div>
         `;
       });
 
-    // Initial Center Strategy
-    // We calculate the bounding box of the tree to center it perfectly
-    // Use a timeout to ensure DOM is rendered for BBox calculation
-    setTimeout(() => {
-        handleFitView();
-    }, 50);
+    // Initial Fit (Delayed to ensure DOM is ready)
+    setTimeout(handleFitView, 100);
 
-  }, [data, dimensions, onNodeClick]); // Re-render on data or dimension change
+  }, [data, dimensions, onNodeClick]);
 
-  // --- Controls Handlers ---
 
+  // --- Controls ---
   const handleZoomIn = () => {
-    if (svgSelectionRef.current && zoomBehaviorRef.current) {
-      svgSelectionRef.current.transition().duration(300).call(zoomBehaviorRef.current.scaleBy, 1.3);
-    }
+    svgSelectionRef.current?.transition().duration(300).call(zoomBehaviorRef.current!.scaleBy, 1.4);
   };
 
   const handleZoomOut = () => {
-    if (svgSelectionRef.current && zoomBehaviorRef.current) {
-      svgSelectionRef.current.transition().duration(300).call(zoomBehaviorRef.current.scaleBy, 1 / 1.3);
-    }
+    svgSelectionRef.current?.transition().duration(300).call(zoomBehaviorRef.current!.scaleBy, 0.7);
   };
 
   const handleFitView = () => {
     if (!svgSelectionRef.current || !zoomBehaviorRef.current || !contentGroupRef.current) return;
 
-    // Get the bounding box of the content
-    // Note: getBBox acts on the SVG elements
-    const bounds = contentGroupRef.current.node()?.getBBox();
-    if (!bounds) return;
+    try {
+      const bounds = contentGroupRef.current.node()?.getBBox();
+      if (!bounds || bounds.width === 0 || bounds.height === 0) return;
 
-    const { width, height } = dimensions;
-    const padding = 80;
+      const { width, height } = dimensions;
+      const padding = 100;
 
-    // Calculate scale to fit
-    const scaleX = (width - padding * 2) / bounds.width;
-    const scaleY = (height - padding * 2) / bounds.height;
-    let scale = Math.min(scaleX, scaleY);
+      const scale = Math.min(
+        (width - padding) / bounds.width,
+        (height - padding) / bounds.height
+      );
 
-    // Limit max scale to avoid zooming in too much on small trees
-    if (scale > 1.2) scale = 1.2;
-    if (scale < 0.1) scale = 0.1;
+      // Clamp scale
+      const clampledScale = Math.max(0.1, Math.min(scale, 1.5));
 
-    // Calculate translation to center
-    // Center of the bounding box
-    const cx = bounds.x + bounds.width / 2;
-    const cy = bounds.y + bounds.height / 2;
+      const cx = bounds.x + bounds.width / 2;
+      const cy = bounds.y + bounds.height / 2;
 
-    const t = d3.zoomIdentity
-      .translate(width / 2, height / 2)
-      .scale(scale)
-      .translate(-cx, -cy);
+      const transform = d3.zoomIdentity
+        .translate(width / 2, height / 2)
+        .scale(clampledScale)
+        .translate(-cx, -cy);
 
-    svgSelectionRef.current.transition().duration(750).call(zoomBehaviorRef.current.transform, t);
+      svgSelectionRef.current.transition().duration(800).call(zoomBehaviorRef.current.transform, transform);
+    } catch (e) {
+      console.error("Error fitting view", e);
+    }
   };
 
   return (
-    <div ref={containerRef} className="w-full h-full bg-slate-50 relative overflow-hidden group">
-        {/* Grid pattern background */}
-        <div className="absolute inset-0 pointer-events-none opacity-[0.4]" 
-             style={{ 
-               backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)', 
-               backgroundSize: '24px 24px' 
-             }}>
-        </div>
+    <div ref={containerRef} className="w-full h-full bg-slate-50 relative overflow-hidden">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 opacity-[0.6]"
+        style={{
+          backgroundImage: 'radial-gradient(#94a3b8 1px, transparent 1px)',
+          backgroundSize: '24px 24px'
+        }}
+      ></div>
+
+      <svg ref={svgRef} className="w-full h-full block touch-none outline-none" />
+
+      {/* Floating Controls */}
+      <div className="absolute bottom-6 right-6 flex flex-col items-end gap-3 z-10">
         
-        <svg ref={svgRef} className="w-full h-full block touch-none" />
-        
-        {/* Interactive Controls Overlay */}
-        <div className="absolute bottom-6 right-6 flex flex-col gap-2">
-            <div className="bg-white p-2 rounded-xl shadow-lg border border-gray-200 flex flex-col gap-2 items-center">
-                <button 
-                    onClick={handleZoomIn}
-                    className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                    title="Aumentar Zoom"
-                >
-                    <ZoomIn size={20} />
-                </button>
-                <button 
-                    onClick={handleZoomOut}
-                    className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                    title="Diminuir Zoom"
-                >
-                    <ZoomOut size={20} />
-                </button>
-                <div className="w-full h-px bg-gray-100 my-0.5"></div>
-                 <button 
-                    onClick={handleFitView}
-                    className="p-2 text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                    title="Centralizar e Ajustar"
-                >
-                    <Maximize size={20} />
-                </button>
-            </div>
-            
-             <div className="hidden sm:flex bg-white/80 backdrop-blur-sm px-3 py-1.5 rounded-lg shadow-sm border border-gray-200 text-xs text-gray-500 items-center gap-2">
-                <MousePointer2 size={12} />
-                <span>Arraste para mover • Scroll para zoom</span>
-             </div>
+        {/* Navigation Hint */}
+        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white/90 backdrop-blur text-slate-500 text-xs font-medium rounded-full shadow-sm border border-slate-200">
+          <Move size={12} />
+          <span>Arraste para navegar</span>
         </div>
+
+        {/* Buttons */}
+        <div className="bg-white/90 backdrop-blur shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100 rounded-2xl p-1.5 flex flex-col gap-1">
+          <button onClick={handleZoomIn} className="p-2.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all active:scale-95" title="Aumentar">
+            <ZoomIn size={20} strokeWidth={2} />
+          </button>
+          <button onClick={handleZoomOut} className="p-2.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all active:scale-95" title="Diminuir">
+            <ZoomOut size={20} strokeWidth={2} />
+          </button>
+          <div className="h-px w-full bg-slate-100 my-0.5"></div>
+          <button onClick={handleFitView} className="p-2.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all active:scale-95" title="Ajustar à tela">
+            <Maximize size={20} strokeWidth={2} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

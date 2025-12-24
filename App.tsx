@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Layout } from 'lucide-react';
+import { Target } from 'lucide-react';
 import MindMap from './components/MindMap';
 import EditModal from './components/EditModal';
 import { INITIAL_TREE_DATA } from './constants';
@@ -9,7 +9,6 @@ export default function App() {
   const [treeData, setTreeData] = useState<TreeNodeData>(INITIAL_TREE_DATA);
   const [editingNode, setEditingNode] = useState<{ id: string; name: string; type: string } | null>(null);
 
-  // Recursive function to update a node's name in the immutable tree structure
   const updateNodeName = (nodes: TreeNodeData, id: string, newName: string): TreeNodeData => {
     if (nodes.id === id) {
       return { ...nodes, name: newName };
@@ -36,25 +35,30 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-slate-50">
-      {/* Header */}
-      <header className="flex-none h-16 bg-white border-b border-gray-200 shadow-sm flex items-center justify-between px-6 z-10">
+    <div className="h-screen w-screen flex flex-col bg-slate-50 text-slate-900 font-sans">
+      
+      {/* Navbar */}
+      <nav className="flex-none h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-6 z-20 relative">
         <div className="flex items-center gap-3">
-          <div className="bg-indigo-600 p-2 rounded-lg">
-            <Layout className="text-white w-5 h-5" />
+          <div className="bg-slate-900 p-2 rounded-lg shadow-lg shadow-indigo-500/20">
+            <Target className="text-indigo-400 w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-slate-800">Mapa Estratégico Interativo</h1>
-            <p className="text-xs text-slate-500">Visualização de Árvore de Decisão</p>
+            <h1 className="text-lg font-bold text-slate-900 tracking-tight leading-none">Mapa Estratégico</h1>
+            <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mt-0.5">Modo de Planejamento</p>
           </div>
         </div>
-        <div className="text-sm text-slate-500 hidden sm:block">
-           Simulação: <span className="font-semibold text-indigo-600">Out of Time</span>
+        
+        <div className="hidden sm:flex items-center gap-4">
+           <div className="px-3 py-1 bg-slate-100 rounded-full border border-slate-200">
+             <span className="text-xs font-medium text-slate-500">Projeto:</span>
+             <span className="text-xs font-bold text-slate-800 ml-1">Out of Time</span>
+           </div>
         </div>
-      </header>
+      </nav>
 
-      {/* Main Canvas */}
-      <main className="flex-grow relative overflow-hidden">
+      {/* Content */}
+      <main className="flex-grow relative w-full h-full">
         <MindMap 
           data={treeData} 
           onNodeClick={handleNodeClick} 
